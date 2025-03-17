@@ -31,14 +31,12 @@ def parse_args():
     parser.add_argument("--run_dir", help="Location of model to resume.")
     parser.add_argument("--training_ids", help="Location of file with training ids.")
     parser.add_argument("--validation_ids", help="Location of file with validation ids.")
-    parser.add_argument("--root_dir", help="Location of file with validation ids.")
     parser.add_argument("--config_file", help="Location of file with validation ids.")
     parser.add_argument("--batch_size", type=int, default=256, help="Training batch size.")
     parser.add_argument("--n_epochs", type=int, default=25, help="Number of epochs to train.")
     parser.add_argument("--adv_start", type=int, default=25, help="Epoch when the adversarial training starts.")
     parser.add_argument("--eval_freq", type=int, default=10, help="Number of epochs to between evaluations.")
     parser.add_argument("--num_workers", type=int, default=8, help="Number of loader workers")
-    parser.add_argument("--experiment", help="Mlflow experiment name.")
 
     args = parser.parse_args()
     return args
@@ -48,7 +46,7 @@ def main(args):
     set_determinism(seed=args.seed)
     print_config()
 
-    output_dir = Path("/mnt/sds-hd/sd20i001/marvin/evaluation/Monai_vq_generative/ACDC_MNM2")
+    output_dir = Path("./output")
     output_dir.mkdir(exist_ok=True, parents=True)
 
     run_dir = output_dir / args.run_dir

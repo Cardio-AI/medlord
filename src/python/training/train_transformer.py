@@ -3,7 +3,7 @@ import argparse
 import warnings
 from pathlib import Path
 
-import mlflow.pytorch
+
 import torch
 import torch.nn as nn
 import torch.optim as optim
@@ -15,10 +15,10 @@ from monai.utils import set_determinism
 from omegaconf import OmegaConf
 from tensorboardX import SummaryWriter
 from training_functions import train_transformer
-from util import get_dataloader, log_mlflow,get_training_data_loader_fastmri
+from util import get_dataloader
 from torch.optim.lr_scheduler import ExponentialLR
 from generative.inferers import VQVAETransformerInferer
-from util import get_training_data_loader_mrnet
+
 
 warnings.filterwarnings("ignore")
 
@@ -30,7 +30,6 @@ def parse_args():
     parser.add_argument("--run_dir", help="Location of model to resume.")
     parser.add_argument("--training_ids", help="Location of file with training ids.")
     parser.add_argument("--validation_ids", help="Location of file with validation ids.")
-    parser.add_argument("--root_dir", help="Location of file with validation ids.")
     parser.add_argument("--config_file", help="Location of file with validation ids.")
     parser.add_argument("--stage1_config", help="Path readable by load_model.")
     parser.add_argument("--stage1_ckpt", help="Path readable by load_model.")
@@ -38,7 +37,7 @@ def parse_args():
     parser.add_argument("--n_epochs", type=int, default=25, help="Number of epochs to train.")
     parser.add_argument("--eval_freq", type=int, default=10, help="Number of epochs to between evaluations.")
     parser.add_argument("--num_workers", type=int, default=8, help="Number of loader workers")
-    parser.add_argument("--experiment", help="Mlflow experiment name.")
+
 
     args = parser.parse_args()
     return args
@@ -60,7 +59,7 @@ def main(args):
     set_determinism(seed=args.seed)
     print_config()
 
-    output_dir = Path("/mnt/sds-hd/sd20i001/marvin/evaluation/Monai_vq_generative")
+    output_dir = Path("")
     output_dir.mkdir(exist_ok=True, parents=True)
 
     run_dir = output_dir / args.run_dir
@@ -91,12 +90,6 @@ def main(args):
         model_type="transformer",
     )
 
-
-    # Load Autoencoder to produce the latent representations
-    '''print(f"Loading Stage 1 from {args.stage1_uri}")
-    stage1 = mlflow.pytorch.load_model(args.stage1_uri)
-    stage1 = Stage1Wrapper(model=stage1)
-    stage1.eval()'''
 
     print(f"Loading Stage 1 from {args.stage1_ckpt}")
     vqvae_checkpoint_path = Path(args.stage1_ckpt)
@@ -172,14 +165,6 @@ def main(args):
         run_dir=run_dir,
     )
 
-    log_mlflow(
-        model=transformer,
-        config=config,
-        args=args,
-        experiment=args.experiment,
-        run_dir=run_dir,
-        val_loss=val_loss,
-    )
 
 
 if __name__ == "__main__":

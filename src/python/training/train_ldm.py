@@ -3,8 +3,6 @@ import argparse
 import warnings
 from pathlib import Path
 
-import json
-import os
 import ast
 
 #import mlflow.pytorch
@@ -19,8 +17,8 @@ from omegaconf import OmegaConf
 from tensorboardX import SummaryWriter
 from training_functions import train_ldm
 from transformers import CLIPTextModel
-from util import get_dataloader, log_mlflow
-import math
+from util import get_dataloader
+
 
 warnings.filterwarnings("ignore")
 
@@ -31,7 +29,6 @@ def parse_args():
     parser.add_argument("--seed", type=int, default=42, help="Random seed to use.")
     parser.add_argument("--output_dir", help="Output directory.")
     parser.add_argument("--cache_dir", type=str,help="Output directory.")
-    parser.add_argument("--log_dir", type=str,help="Output directory.")
     parser.add_argument("--run_dir", help="Location of model to resume.")
     parser.add_argument("--training_ids", help="Location of file with training ids.")
     parser.add_argument("--validation_ids", help="Location of file with validation ids.")
@@ -42,7 +39,6 @@ def parse_args():
     parser.add_argument("--n_epochs", type=int, default=25, help="Number of epochs to train.")
     parser.add_argument("--eval_freq", type=int, default=2, help="Number of epochs to between evaluations.")
     parser.add_argument("--num_workers", type=int, default=8, help="Number of loader workers")
-    parser.add_argument("--experiment", help="Mlflow experiment name.")
     parser.add_argument(
         "--image_roi",
         default=None,
@@ -116,10 +112,10 @@ def main(args):
     # Load Autoencoder to produce the latent representations
     print(f"Loading Stage 1 from {args.vqvae_ckpt}")
     vqvae_checkpoint_path = Path(args.vqvae_ckpt)
-    config = OmegaConf.load("/mnt/sds-hd/sd20i001/marvin/cfgs/stage1/ldm_project/vqgan_ds4.yaml")
+    config = OmegaConf.load("vqgan_1.yaml")
     stage1 = VQVAE(**config["stage1"]["params"])
     vqvae_checkpoint = torch.load(vqvae_checkpoint_path,map_location="cpu")
-    stage1.load_state_dict(vqvae_checkpoint["state_dict"]) #changed model_state_dict
+    stage1.load_state_dict(vqvae_checkpoint["state_dict"])
 
     stage1 = Stage1Wrapper(model=stage1)
     stage1.eval()
