@@ -5,13 +5,16 @@ MedLoRD generates high-dimensional medical volumes with resolutions up to **512�
 Here is an overview of the MedLoRD model:
 
 <div align="center">
-  <img src="figures/medlord.png" width="400" />
+  <img src="/figures/luna_cond.gif" width="400" style="margin-right: 20px;"/>
+  <img src="/figures/pccta_cond.gif" width="400" />
 </div>
-
 
 ## Abstract
 
 Advancements in AI for medical imaging offer significant potential. However, their applications are constrained by the limited availability of data and the reluctance of medical centers to share it due to patient privacy concerns. Generative models present a promising solution by creating synthetic data as a substitute for real patient data. However, medical images are typically high-dimensional, and current state-of-the-art methods are often impractical for computational resource-constrained healthcare environments. These models rely on data sub-sampling, raising doubts about their feasibility and real-world applicability. Furthermore, many of these models are evaluated on quantitative metrics that alone can be misleading in assessing the image quality and clinical meaningfulness of the generated images. To address this, we introduce **MedLoRD**, a generative diffusion model designed for computational resource-constrained environments. MedLoRD is capable of generating high-dimensional medical volumes with resolutions up to **512×512×256**, utilizing GPUs with only **24GB VRAM**, which are commonly found in standard desktop workstations. MedLoRD is evaluated across multiple modalities, including **Coronary Computed Tomography Angiography** and **Lung Computed Tomography** datasets. Extensive evaluations through radiological evaluation, relative regional volume analysis, adherence to conditional masks, and downstream tasks show that MedLoRD generates high-fidelity images closely adhering to segmentation mask conditions, surpassing the capabilities of current state-of-the-art generative models for medical image synthesis in computational resource-constrained environments.
+<div align="center">
+  <img src="figures/medlord.png" width="400" />
+</div>
 
 ## Requirements
 
@@ -41,16 +44,6 @@ First a VQ-VAE witg GAN loss is trained to encode images into latent space. For 
 To train a diffusion model in the learned latent space run:
 
 `python ./src/python/training/train_ldm.py --training_ids=./ids/train_ids.csv --validation_ids=./ids/val_ids.csv --run_dir=LDM_v1 --batch_size=1 --eval_freq=10 --n_epochs=500 --adv_start=50 --num_workers=2 --config_file=./configs/stage1/vqgan_ds4.yaml --vqvae_ckpt=./vqgan_1.pth --scale_factor=1.0`
-
-## Results
-
-Example results show the ability of MedLoRD to generate high-resolution 3D CT volumes, closely adhering to the ground truth segmentation masks.
-
-<div align="center">
-  <img src="/figures/luna_cond.gif" width="400" style="margin-right: 20px;"/>
-  <img src="/figures/pccta_cond.gif" width="400" />
-</div>
-
 
 
 ## License
