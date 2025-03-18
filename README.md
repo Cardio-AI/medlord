@@ -5,11 +5,11 @@ MedLoRD generates high-dimensional medical volumes with resolutions up to **512Ã
 Here is an overview of the MedLoRD model:
 
 
-| ![LUNA Example](figures/lung.gif)  | ![PCCTA Example](figures/pccta_cond.gif) |
+| ![LUNA Unconditional](figures/lung_uncond.gif)  | ![PCCTA Unconditional](figures/pccta_uncond.gif) |
 |-----------------------------------------|-----------------------------------------|
 | *LUNA Dataset*                          | *PCCTA Dataset*                         |
 
-| ![Extra Example 1](figures/example1.gif) | ![Extra Example 2](figures/example2.gif) |
+| ![LUNA Conditional](figures/luna_cond.gif) | ![PCCTA Conditional](figures/pccta_cond.gif) |
 |------------------------------------------|------------------------------------------|
 | *Extra Example 1*                        | *Extra Example 2*                        |
 
