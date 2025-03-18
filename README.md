@@ -27,7 +27,7 @@ Create a conda environment to install the required dependencies:
 ```bash
 conda env create -f environment.yml -n medlord-env
 
-conda activate medlord-env```
+conda activate medlord-env
 
 ### 2. Prepare Your Dataset
 Before training, make sure you have your dataset prepared. The training code expects paths to images stored in a csv file with column name "image" (see preprocess_data notebook file for more information)
