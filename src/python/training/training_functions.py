@@ -12,7 +12,7 @@ from tensorboardX import SummaryWriter
 from torch.cuda.amp import GradScaler, autocast
 from torch.nn import CrossEntropyLoss
 from tqdm import tqdm
-from util import log_ldm_sample_unconditioned, log_reconstructions
+from util import log_reconstructions
 
 
 import matplotlib.pyplot as plt
