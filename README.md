@@ -26,6 +26,7 @@ Create a conda environment to install the required dependencies:
 
 
 `conda env create -f environment.yml -n medlord-env
+
 conda activate medlord-env`
 
 ### 2. Prepare Your Dataset
