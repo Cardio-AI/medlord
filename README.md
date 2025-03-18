@@ -1,6 +1,7 @@
 # MedLoRD: A Medical Low-Resource Diffusion Model for High-Resolution 3D CT Image Synthesis
 
 This repository contains the code used for the paper **"MedLoRD: A Medical Low-Resource Diffusion Model for High-Resolution 3D CT Image Synthesis"**, which introduces MedLoRD, a generative diffusion model tailored for computational resource-constrained environments: https://arxiv.org/abs/2503.13211
+
 MedLoRD generates high-dimensional medical volumes with resolutions up to **512×512×256**, enabling high-quality synthetic medical image generation on systems with **only 24GB VRAM**.
 Here is an overview of the MedLoRD model:
 
