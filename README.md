@@ -4,14 +4,12 @@ This repository contains the code used for the paper **"MedLoRD: A Medical Low-R
 MedLoRD generates high-dimensional medical volumes with resolutions up to **512×512×256**, enabling high-quality synthetic medical image generation on systems with **only 24GB VRAM**.
 Here is an overview of the MedLoRD model:
 
-| ![LUNA Unconditional](figures/lung_uncond.gif)  | ![PCCTA Unconditional](figures/pccta_uncond.gif) |
-|-----------------------------------------|-----------------------------------------|
-| *LUNA Unconditional*                          | *PCCTA Unconditional*                         |
-
-| ![LUNA Conditional](figures/luna_cond.gif) | ![PCCTA Conditional](figures/pccta_cond.gif) |
-|------------------------------------------|------------------------------------------|
-| *LUNA Conditional*                        | *PCCTA Conditional*                        |
-
+<div align="center">
+  <img src="figures/lung_uncond.gif" width="220"/>
+  <img src="figures/pccta_uncond.gif" width="220"/>
+  <img src="figures/luna_cond.gif" width="220"/>
+  <img src="figures/pccta_cond.gif" width="220"/>
+</div>
 
 ## Abstract
 
