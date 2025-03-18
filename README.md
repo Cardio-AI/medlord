@@ -11,7 +11,7 @@ Here is an overview of the MedLoRD model:
 
 | ![LUNA Conditional](figures/luna_cond.gif) | ![PCCTA Conditional](figures/pccta_cond.gif) |
 |------------------------------------------|------------------------------------------|
-| *LUNA Conditional*                        | *PCCTA Conditional                        |
+| *LUNA Conditional*                        | *PCCTA Conditional*                        |
 
 </div>
 ## Abstract
