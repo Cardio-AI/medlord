@@ -4,7 +4,6 @@ This repository contains the code used for the paper **"MedLoRD: A Medical Low-R
 MedLoRD generates high-dimensional medical volumes with resolutions up to **512×512×256**, enabling high-quality synthetic medical image generation on systems with **only 24GB VRAM**.
 Here is an overview of the MedLoRD model:
 
-<div align="center">
 | ![LUNA Unconditional](figures/lung_uncond.gif)  | ![PCCTA Unconditional](figures/pccta_uncond.gif) |
 |-----------------------------------------|-----------------------------------------|
 | *LUNA Unconditional*                          | *PCCTA Unconditional*                         |
@@ -13,7 +12,7 @@ Here is an overview of the MedLoRD model:
 |------------------------------------------|------------------------------------------|
 | *LUNA Conditional*                        | *PCCTA Conditional*                        |
 
-</div>
+
 ## Abstract
 
 Advancements in AI for medical imaging offer significant potential. However, their applications are constrained by the limited availability of data and the reluctance of medical centers to share it due to patient privacy concerns. Generative models present a promising solution by creating synthetic data as a substitute for real patient data. However, medical images are typically high-dimensional, and current state-of-the-art methods are often impractical for computational resource-constrained healthcare environments. These models rely on data sub-sampling, raising doubts about their feasibility and real-world applicability. Furthermore, many of these models are evaluated on quantitative metrics that alone can be misleading in assessing the image quality and clinical meaningfulness of the generated images. To address this, we introduce **MedLoRD**, a generative diffusion model designed for computational resource-constrained environments. MedLoRD is capable of generating high-dimensional medical volumes with resolutions up to **512×512×256**, utilizing GPUs with only **24GB VRAM**, which are commonly found in standard desktop workstations. MedLoRD is evaluated across multiple modalities, including **Coronary Computed Tomography Angiography** and **Lung Computed Tomography** datasets. Extensive evaluations through radiological evaluation, relative regional volume analysis, adherence to conditional masks, and downstream tasks show that MedLoRD generates high-fidelity images closely adhering to segmentation mask conditions, surpassing the capabilities of current state-of-the-art generative models for medical image synthesis in computational resource-constrained environments.
