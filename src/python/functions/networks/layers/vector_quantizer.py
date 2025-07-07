@@ -10,9 +10,10 @@
 # limitations under the License.
 
 from typing import Sequence, Tuple
-
+from scipy.stats import entropy
 import torch
 from torch import nn
+import numpy as np
 
 __all__ = ["VectorQuantizer", "EMAQuantizer"]
 
@@ -49,11 +50,20 @@ class EMAQuantizer(nn.Module):
         epsilon: float = 1e-5,
         embedding_init: str = "normal",
         ddp_sync: bool = True,
+        restart_threshold: float = 1.0,
+        max_iterations: int = 200000,
+        training_step: int = 20000
     ):
         super().__init__()
         self.spatial_dims: int = spatial_dims
         self.embedding_dim: int = embedding_dim
         self.num_embeddings: int = num_embeddings
+        self.max_iterations: int = max_iterations
+        self.training_step: int = training_step
+
+        self.register_buffer("dead_code_counter", torch.zeros(self.num_embeddings))  # how many steps each code was unused
+        self.dead_restart_threshold = 1000 # make this more flexible and depending on dataset size maybe
+
 
         assert self.spatial_dims in [2, 3], ValueError(
             f"EMAQuantizer only supports 4D and 5D tensor inputs but received spatial dims {spatial_dims}."
@@ -77,13 +87,58 @@ class EMAQuantizer(nn.Module):
 
         self.ddp_sync: bool = ddp_sync
 
+        self.restart_threshold: float = restart_threshold  # New: Threshold for restarts
+
         # Precalculating required permutation shapes
         self.flatten_permutation: Sequence[int] = [0] + list(range(2, self.spatial_dims + 2)) + [1]
         self.quantization_permutation: Sequence[int] = [0, self.spatial_dims + 1] + list(
             range(1, self.spatial_dims + 1)
         )
 
+    @torch.cuda.amp.autocast(enabled=False)
+    def quantize_old(self, inputs: torch.Tensor) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
+        """
+        Given an input it projects it to the quantized space and returns additional tensors needed for EMA loss.
+
+        Args:
+            inputs: Encoding space tensors
+
+        Returns:
+            torch.Tensor: Flatten version of the input of shape [B*D*H*W, C].
+            torch.Tensor: One-hot representation of the quantization indices of shape [B*D*H*W, self.num_embeddings].
+            torch.Tensor: Quantization indices of shape [B,D,H,W,1]
+
+        """
+        encoding_indices_view = list(inputs.shape)
+        del encoding_indices_view[1]
+
+        inputs = inputs.float()
+
+        # Converting to channel last format
+        #flat_input = inputs.permute(self.flatten_permutation).contiguous().view(-1, self.embedding_dim)
+
+        '''Changed to in-place operation to reduce memory consumption: Changed "flat_input" to "inputs"'''
+        inputs = inputs.permute(self.flatten_permutation).contiguous().view(-1, self.embedding_dim)
+        
+        print("test")
+        # Calculate Euclidean distances
+        distances = (
+            (inputs**2).sum(dim=1, keepdim=True)
+            + (self.embedding.weight.t() ** 2).sum(dim=0, keepdim=True)
+            - 2 * torch.mm(inputs, self.embedding.weight.t())
+        )
+
+        # Mapping distances to indexes
+        encoding_indices = torch.max(-distances, dim=1)[1]
+        #encodings = torch.nn.functional.one_hot(encoding_indices, self.num_embeddings).float()
+
+        # Quantize and reshape
+        encoding_indices = encoding_indices.view(encoding_indices_view)
+
+        #return inputs, encodings, encoding_indices
+        return inputs, encoding_indices
     
+
     @torch.cuda.amp.autocast(enabled=False)
     def quantize(self, inputs: torch.Tensor, batch_size: int = 32) -> Tuple[torch.Tensor, torch.Tensor, torch.Tensor]:
         """
@@ -175,10 +230,14 @@ class EMAQuantizer(nn.Module):
         flat_input, encoding_indices = self.quantize(inputs)
         quantized = self.embed(encoding_indices)
 
+        if not hasattr(self, "training_step"):
+            self.training_step = 0
+
         # Use EMA to update the embedding vectors
         if self.training:
             with torch.no_grad():
-                encodings = torch.nn.functional.one_hot(encoding_indices, self.num_embeddings).float()
+                encoding_indices_flat = encoding_indices.view(-1)
+                encodings = torch.nn.functional.one_hot(encoding_indices_flat, self.num_embeddings).float()
 
                 encodings_sum = encodings.sum(0)
                 dw = torch.mm(encodings.t(), flat_input)
@@ -188,12 +247,68 @@ class EMAQuantizer(nn.Module):
 
                 self.ema_cluster_size.data.mul_(self.decay).add_(torch.mul(encodings_sum, 1 - self.decay))
 
+                
+
                 # Laplace smoothing of the cluster size
                 n = self.ema_cluster_size.sum()
                 weights = (self.ema_cluster_size + self.epsilon) / (n + self.num_embeddings * self.epsilon) * n
                 self.ema_w.data.mul_(self.decay).add_(torch.mul(dw, 1 - self.decay))
-                self.embedding.weight.data.copy_(self.ema_w / weights.unsqueeze(1))
+                #self.ema_w.data = torch.clamp(self.ema_w.data, min=-1e3, max=1e3)  # Prevent extreme updates: Works well, but too restrictive and not adaptive
+                
+                #self.embedding.weight.data.copy_(self.ema_w / (weights.unsqueeze(1) + 1e-8))  #added for numerical stability
+                updated_embedding = self.ema_w / (weights.unsqueeze(1) + 1e-8)
 
+                # L2 normalization of codebook vectors
+                norm = updated_embedding.norm(p=2, dim=1, keepdim=True)
+                updated_embedding = updated_embedding / (norm + 1e-8)
+
+                self.embedding.weight.data.copy_(updated_embedding)
+
+                '''### Added Random Restart Logic to mitigate codebook collapse ###########################
+                is_used = (encodings_sum > 0).float()
+                self.dead_code_counter += (1 - is_used)
+                self.dead_code_counter[is_used.bool()] = 0 # reset counter for used codes
+
+                # Detect long-dead codes
+                long_dead = (self.dead_code_counter >= self.dead_restart_threshold).nonzero(as_tuple=False).squeeze()
+                if long_dead.numel() > 0:
+                    if long_dead.ndim == 0:
+                        long_dead = long_dead.unsqueeze(0)
+                    rand_indices = torch.randint(0, flat_input.shape[0], (long_dead.numel(),), device=flat_input.device)
+                    self.embedding.weight.data[long_dead] = flat_input[rand_indices]
+                    self.dead_code_counter[long_dead] = 0'''
+                ''' #Dynamic clamping
+                if self.training_step < 18000:
+                    # No clamping for the first 20,000 steps
+                    clamp_min, clamp_max = None, None  
+                else:
+                    # Compute dynamic clamping after warm-up
+                    embedding_mean = self.ema_w.data.mean()
+                    embedding_std = self.ema_w.data.std()
+                    
+                    # Gradually transition from fixed [-1000, 1000] to mean ± 3std
+                    initial_range = 1000  # Start clamping at [-1000, 1000] after 20k steps
+                    final_multiplier = 3   # Final clamping target is mean ± 3std
+                    
+                    progress_factor = min(1.0, (self.training_step - 18000) / (self.max_iterations - 18000))
+                    
+                    clamp_min = (1 - progress_factor) * -initial_range + progress_factor * (embedding_mean - final_multiplier * embedding_std)
+                    clamp_max = (1 - progress_factor) * initial_range + progress_factor * (embedding_mean + final_multiplier * embedding_std)
+                    clamp_min = max(clamp_min, -initial_range)
+                    clamp_max = min(clamp_max, initial_range)
+
+                    #clamp_min = -1000
+                    #clamp_max = 1000
+                
+                if clamp_min is not None and clamp_max is not None:
+                    self.ema_w.data = torch.clamp(self.ema_w.data, min=clamp_min, max=clamp_max)
+                
+                # Apply gradient clipping to prevent gradient explosion
+                #torch.nn.utils.clip_grad_norm_(self.ema_w, max_norm=1.0)
+
+                self.embedding.weight.data.copy_(self.ema_w / (weights.unsqueeze(1) + 1e-8))'''
+
+            self.training_step += 1
         # Encoding Loss
         loss = self.commitment_cost * torch.nn.functional.mse_loss(quantized.detach(), inputs)
 

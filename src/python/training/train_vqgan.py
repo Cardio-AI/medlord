@@ -3,12 +3,16 @@ import argparse
 import warnings
 from pathlib import Path
 
+import sys
+import os
+sys.path.append('/media/marvin/D/Marvin/MedLoRD/medlord_journal')
+
 import torch
 import torch.optim as optim
 
 from generative.losses.perceptual import PerceptualLoss
 
-from generative.networks.nets import VQVAE #change to generative_new?
+from src.python.functions.networks.nets import VQVAE #change to generative_new?
 from generative.networks.nets.patchgan_discriminator import PatchDiscriminator #change to generative_new?
 
 from monai.config import print_config
@@ -28,6 +32,7 @@ def parse_args():
     parser = argparse.ArgumentParser()
 
     parser.add_argument("--seed", type=int, default=2, help="Random seed to use.")
+    parser.add_argument("--output_dir", help="Location of model to resume.")
     parser.add_argument("--run_dir", help="Location of model to resume.")
     parser.add_argument("--training_ids", help="Location of file with training ids.")
     parser.add_argument("--validation_ids", help="Location of file with validation ids.")
@@ -46,11 +51,11 @@ def main(args):
     set_determinism(seed=args.seed)
     print_config()
 
-    output_dir = Path("./output")
+    output_dir = Path(args.output_dir)
     output_dir.mkdir(exist_ok=True, parents=True)
 
     run_dir = output_dir / args.run_dir
-    if run_dir.exists() and (run_dir / "checkpoint_epoch_400.pth").exists():
+    if run_dir.exists() and (run_dir / "checkpoint.pth").exists():
         resume = True
     else:
         resume = False
@@ -74,7 +79,7 @@ def main(args):
         training_ids=args.training_ids,
         validation_ids=args.validation_ids,
         num_workers=args.num_workers,
-        model_type="autoencoder",
+        model_type="autoencoder_luna",
     )
 
     print("Creating model...")
@@ -102,11 +107,28 @@ def main(args):
     # Get Checkpoint
     best_loss = float("inf")
     start_epoch = 0
+    def remove_module_prefix(state_dict):
+        """Remove 'module.' prefix from checkpoint keys if present."""
+        return {k.replace("module.", ""): v for k, v in state_dict.items()}
+
+    def add_module_prefix(state_dict):
+        """Add 'module.' prefix to checkpoint keys if needed."""
+        return {f"module.{k}" if not k.startswith("module.") else k: v for k, v in state_dict.items()}
     if resume:
         print(f"Using checkpoint!")
-        checkpoint = torch.load(str(run_dir / "checkpoint_epoch_400.pth"))
-        model.load_state_dict(checkpoint["state_dict"])
-        discriminator.load_state_dict(checkpoint["discriminator"])
+        checkpoint = torch.load(str(run_dir / "checkpoint.pth"))
+        model_state_dict = checkpoint["state_dict"]
+        if isinstance(model, torch.nn.DataParallel):
+            model_state_dict = add_module_prefix(model_state_dict)
+        else:
+            model_state_dict = remove_module_prefix(model_state_dict)
+        model.load_state_dict(model_state_dict)
+        discriminator_state_dict = checkpoint["discriminator"]
+        if isinstance(discriminator, torch.nn.DataParallel):
+            discriminator_state_dict = add_module_prefix(discriminator_state_dict)
+        else:
+            discriminator_state_dict = remove_module_prefix(discriminator_state_dict)
+        discriminator.load_state_dict(discriminator_state_dict)
         optimizer_g.load_state_dict(checkpoint["optimizer_g"])
         for g in optimizer_g.param_groups:
             g['lr'] = float(config["stage1"]["base_lr"])
@@ -115,6 +137,12 @@ def main(args):
             d['lr'] = float(config["stage1"]["disc_lr"])
         start_epoch = checkpoint["epoch"]
         best_loss = checkpoint["best_loss"]
+        if "ema_cluster_size" in checkpoint and "ema_w" in checkpoint:
+            model.quantizer.quantizer.ema_cluster_size = checkpoint["ema_cluster_size"]
+            model.quantizer.quantizer.ema_w = checkpoint["ema_w"]
+            print("EMA parameters successfully restored!")
+        else:
+            print("Warning: EMA parameters not found in checkpoint. This may affect codebook usage.")
     else:
         print(f"No checkpoint found.")
 

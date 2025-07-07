@@ -19,7 +19,7 @@ from monai.networks.blocks import Convolution
 from monai.networks.layers import Act
 from monai.utils import ensure_tuple_rep
 
-from functions.networks.layers.vector_quantizer import EMAQuantizer, VectorQuantizer
+from src.python.functions.networks.layers.vector_quantizer import EMAQuantizer, VectorQuantizer
 
 __all__ = ["VQVAE"]
 
@@ -411,6 +411,8 @@ class VQVAE(nn.Module):
                 epsilon=epsilon,
                 embedding_init=embedding_init,
                 ddp_sync=ddp_sync,
+                max_iterations=200000,
+                training_step=18000
             )
         )
 

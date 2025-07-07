@@ -12,7 +12,8 @@ from tensorboardX import SummaryWriter
 from torch.cuda.amp import GradScaler, autocast
 from torch.nn import CrossEntropyLoss
 from tqdm import tqdm
-from util import log_reconstructions
+from src.python.training.util import log_reconstructions
+from src.python.functions.networks.schedulers import RFlowScheduler
 
 
 import matplotlib.pyplot as plt
@@ -32,7 +33,14 @@ def print_gpu_memory_report():
         for i, data_by_rank in enumerate(data):
             mem_report = data_by_rank["fb_memory_usage"]
             print(f"gpu:{i} mem(%) {int(mem_report['used'] * 100.0 / mem_report['total'])}")
+def get_adv_weight(epoch, warmup_epochs=100, max_weight=1.0):
 
+    if epoch < warmup_epochs:
+        # Linear ramp-up: gradually increase adv_weight from 0 to max_weight
+        return (epoch / warmup_epochs) * max_weight
+    else:
+        # Keep adv_weight constant after warm-up period
+        return max_weight
 
 # ----------------------------------------------------------------------------------------------------------------------
 # AUTOENCODER
@@ -77,6 +85,7 @@ def train_vqgan(
     )
     print(f"epoch {start_epoch} val loss: {val_loss:.4f}")
     for epoch in range(start_epoch, n_epochs):
+        adv_weight = get_adv_weight(epoch, warmup_epochs=adv_start, max_weight=0.005)
         train_epoch_vqgan(
             model=model,
             discriminator=discriminator,
@@ -96,6 +105,16 @@ def train_vqgan(
         d_scheduler.step()
 
         if (epoch + 1) % eval_freq == 0:
+            
+            model_ref = model.module if isinstance(model, torch.nn.DataParallel) else model
+
+            if hasattr(model_ref, "quantizer") and hasattr(model_ref.quantizer, "quantizer"):
+                unused_mask = model_ref.quantizer.quantizer.ema_cluster_size < model_ref.quantizer.quantizer.restart_threshold  
+                num_unused = unused_mask.sum().item()
+                print(f"Number of unused embeddings: {num_unused}")
+                
+                # Log to TensorBoard (Validation)
+                writer_val.add_scalar("Codebook/Unused_Embeddings", num_unused, epoch)
             val_loss = eval_vqgan(
                 model=model,
                 discriminator=discriminator,
@@ -104,7 +123,7 @@ def train_vqgan(
                 device=device,
                 step=len(train_loader) * epoch,
                 writer=writer_val,
-                adv_weight=adv_weight if epoch >= adv_start else 0.0,
+                adv_weight=adv_weight,
                 perceptual_weight=perceptual_weight,
             )
             print(f"epoch {epoch + 1} val loss: {val_loss:.4f}")
@@ -118,6 +137,8 @@ def train_vqgan(
                 "optimizer_g": optimizer_g.state_dict(),
                 "optimizer_d": optimizer_d.state_dict(),
                 "best_loss": best_loss,
+                "ema_cluster_size": model.quantizer.quantizer.ema_cluster_size,  # Add this
+                "ema_w": model.quantizer.quantizer.ema_w,
             }
             torch.save(checkpoint, str(run_dir / f"checkpoint_epoch_{epoch + 1}.pth"))
 
@@ -151,18 +172,18 @@ def train_epoch_vqgan(
     discriminator.train()
 
     adv_loss = PatchAdversarialLoss(criterion="least_squares", no_activation_leastsq=True)
-    #jukebox_loss = JukeboxLoss(spatial_dims=3)
+    jukebox_loss = JukeboxLoss(spatial_dims=3)
 
     pbar = tqdm(enumerate(loader), total=len(loader))
     for step, x in pbar:
-        images = x["image"].to(device)
+        images = x["image"].as_tensor().to(device)
         # GENERATOR
         optimizer_g.zero_grad(set_to_none=True)
         with autocast(enabled=True):
             reconstruction, quantization_loss = model(images)
             l1_loss = F.l1_loss(reconstruction.float(), images.float())
             p_loss = perceptual_loss(reconstruction.float(), images.float())
-            #j_loss = jukebox_loss(reconstruction.float(), images.float())
+            j_loss = jukebox_loss(reconstruction.float(), images.float())
 
             if adv_weight > 0:
                 logits_fake = discriminator(reconstruction.contiguous().float())[-1]
@@ -170,14 +191,25 @@ def train_epoch_vqgan(
             else:
                 generator_loss = torch.tensor([0.0]).to(device)
 
-            loss = l1_loss + quantization_loss + perceptual_weight * p_loss + adv_weight * generator_loss 
+            # ADDED ENTROPY LOSS TO ENFORCE DIVERSE CODEBOOK - ON EMA CLUSTERS FOR SMOOTH LEARNING
 
+            cluster_size = model.quantizer.quantizer.ema_cluster_size 
+            cluster_prob = cluster_size / (cluster_size.sum() + 1e-8)
+
+            entropy = -torch.sum(cluster_prob * torch.log(cluster_prob + 1e-8))  # Avoid log(0)
+            entropy_loss = -entropy
+
+            entropy_weight = 0.001  # Start with low weight, increase as resolution of patches increases.
+
+            loss = l1_loss + quantization_loss + perceptual_weight * p_loss + adv_weight * generator_loss + j_loss+ entropy_weight * entropy_loss
+            
             loss = loss.mean()
             l1_loss = l1_loss.mean()
             p_loss = p_loss.mean()
             quantization_loss = quantization_loss.mean()
             g_loss = generator_loss.mean()
-            #j_loss = j_loss.mean()
+            j_loss = j_loss.mean()
+            entropy_loss = entropy_loss.mean()
 
             #loss = l1_loss + quantization_loss + perceptual_weight * p_loss + adv_weight * generator_loss + j_loss
 
@@ -187,13 +219,14 @@ def train_epoch_vqgan(
                 p_loss=p_loss,
                 quantization_loss=quantization_loss,
                 g_loss=g_loss,
-                #j_loss=j_loss
+                j_loss=j_loss,
+                entropy_loss=entropy_loss,
 
             )
 
         scaler_g.scale(losses["loss"]).backward()
         scaler_g.unscale_(optimizer_g)
-        torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0) 
+        torch.nn.utils.clip_grad_norm_(model.parameters(), 1.5) 
         scaler_g.step(optimizer_g)
         scaler_g.update()
 
@@ -214,7 +247,7 @@ def train_epoch_vqgan(
 
             scaler_d.scale(d_loss).backward()
             scaler_d.unscale_(optimizer_d)
-            torch.nn.utils.clip_grad_norm_(discriminator.parameters(), 1.0) 
+            torch.nn.utils.clip_grad_norm_(discriminator.parameters(), 1.5) 
             scaler_d.step(optimizer_d)
             scaler_d.update()
         else:
@@ -260,13 +293,13 @@ def eval_vqgan(
     jukebox_loss = JukeboxLoss(spatial_dims=3)
     total_losses = OrderedDict()
     for x in loader:
-        images = x["image"].to(device)
+        images = x["image"].as_tensor().to(device)
         with autocast(enabled=True):
             # GENERATOR
             reconstruction, quantization_loss = model(images)
             l1_loss = F.l1_loss(reconstruction.float(), images.float())
             p_loss = perceptual_loss(reconstruction.float(), images.float())
-            #j_loss = jukebox_loss(reconstruction.float(), images.float())
+            j_loss = jukebox_loss(reconstruction.float(), images.float())
 
             if adv_weight > 0:
                 logits_fake = discriminator(reconstruction.contiguous().float())[-1]
@@ -284,15 +317,25 @@ def eval_vqgan(
             else:
                 discriminator_loss = torch.tensor([0.0]).to(device)
 
-            loss = l1_loss + quantization_loss + perceptual_weight * p_loss + adv_weight * generator_loss
+            # ADDED ENTROPY LOSS TO ENFORCE DIVERSE CODEBOOK - ON EMA CLUSTERS FOR SMOOTH LEARNING
+            cluster_size = model.quantizer.quantizer.ema_cluster_size 
+            cluster_prob = cluster_size / (cluster_size.sum() + 1e-8)
+            entropy = -torch.sum(cluster_prob * torch.log(cluster_prob + 1e-8))  # Avoid log(0)
+            entropy_loss = -entropy
 
+            entropy_weight = 0.001
+
+            #loss = l1_loss + quantization_loss + perceptual_weight * p_loss + adv_weight * generator_loss + j_loss + perplexity_weight * perplexity_loss
+            loss = l1_loss + quantization_loss + perceptual_weight * p_loss + adv_weight * generator_loss + j_loss + entropy_weight * entropy_loss
+            
             loss = loss.mean()
             l1_loss = l1_loss.mean()
             p_loss = p_loss.mean()
             quantization_loss = quantization_loss.mean()
             g_loss = generator_loss.mean()
             d_loss = discriminator_loss.mean()
-            #j_loss = j_loss.mean()
+            j_loss = j_loss.mean()
+            entropy_loss = entropy_loss.mean()
 
             #loss = l1_loss + quantization_loss + perceptual_weight * p_loss + adv_weight * generator_loss + j_loss
             losses = OrderedDict(
@@ -302,7 +345,8 @@ def eval_vqgan(
                 quantization_loss=quantization_loss,
                 g_loss=g_loss,
                 d_loss=d_loss,
-                #j_loss=j_loss,
+                j_loss=j_loss,
+                entropy_loss=entropy_loss
             )
 
         for k, v in losses.items():
@@ -464,6 +508,7 @@ def train_epoch_ldm(
     pbar = tqdm(enumerate(loader), total=len(loader))
     for step, x in pbar:
         images = x["image"].as_tensor().to(device)
+        
         timesteps = torch.randint(0, scheduler.num_train_timesteps, (images.shape[0],), device=device).long()
 
         optimizer.zero_grad(set_to_none=True)
@@ -472,15 +517,21 @@ def train_epoch_ldm(
             with autocast(enabled=True):
                 images = images * scale_factor
                 noise = torch.randn_like(images).to(device)
+                if isinstance(scheduler, RFlowScheduler):
+                    timesteps = scheduler.sample_timesteps(images)
+                    
                 noisy_e = scheduler.add_noise(original_samples=images, noise=noise, timesteps=timesteps)
                 noise_pred = model(x=noisy_e, timesteps=timesteps)
                 
                 #del noisy_e
                 #torch.cuda.empty_cache()
-                if scheduler.prediction_type == "v_prediction":
-                    target = scheduler.get_velocity(images, noise, timesteps)
-                elif scheduler.prediction_type == "epsilon":
-                    target = noise
+                if isinstance(scheduler, RFlowScheduler):
+                    target = images - noise
+                else:
+                    if scheduler.prediction_type == "v_prediction":
+                        target = scheduler.get_velocity(images, noise, timesteps)
+                    elif scheduler.prediction_type == "epsilon":
+                        target = noise
                 #del images, noise
                 #torch.cuda.empty_cache()
                 loss = F.l1_loss(noise_pred.float(), target.float())
@@ -494,15 +545,20 @@ def train_epoch_ldm(
                 #torch.cuda.empty_cache()
 
                 noise = torch.randn_like(e).to(device)
+                if isinstance(scheduler, RFlowScheduler):
+                    timesteps = scheduler.sample_timesteps(e)
                 noisy_e = scheduler.add_noise(original_samples=e, noise=noise, timesteps=timesteps)
                 noise_pred = model(x=noisy_e, timesteps=timesteps)
 
                 #del noisy_e
                 #torch.cuda.empty_cache()
-                if scheduler.prediction_type == "v_prediction":
-                    target = scheduler.get_velocity(e, noise, timesteps)
-                elif scheduler.prediction_type == "epsilon":
-                    target = noise
+                if isinstance(scheduler, RFlowScheduler):
+                    target = images - noise
+                else:
+                    if scheduler.prediction_type == "v_prediction":
+                        target = scheduler.get_velocity(images, noise, timesteps)
+                    elif scheduler.prediction_type == "epsilon":
+                        target = noise
                 #del e,noise
                 #torch.cuda.empty_cache()
                 loss = F.l1_loss(noise_pred.float(), target.float())
@@ -562,14 +618,18 @@ def eval_ldm(
             with autocast(enabled=True):
                 images = images * scale_factor
                 noise = torch.randn_like(images).to(device)
+                if isinstance(scheduler, RFlowScheduler):
+                    timesteps = scheduler.sample_timesteps(images)
                 noisy_e = scheduler.add_noise(original_samples=images, noise=noise, timesteps=timesteps)
                 noise_pred = model(x=noisy_e, timesteps=timesteps)
                 
-                if scheduler.prediction_type == "v_prediction":
-                    # Use v-prediction parameterization
-                    target = scheduler.get_velocity(images, noise, timesteps)
-                elif scheduler.prediction_type == "epsilon":
-                    target = noise
+                if isinstance(scheduler, RFlowScheduler):
+                    target = images - noise
+                else:
+                    if scheduler.prediction_type == "v_prediction":
+                        target = scheduler.get_velocity(images, noise, timesteps)
+                    elif scheduler.prediction_type == "epsilon":
+                        target = noise
                 #del images,noise
                 #torch.cuda.empty_cache()
                 loss = F.l1_loss(noise_pred.float(), target.float()) 
@@ -579,15 +639,19 @@ def eval_ldm(
 
                 #del images
                 #torch.cuda.empty_cache()
-                noise = torch.randn_like(e).to(device) 
+                noise = torch.randn_like(e).to(device)
+                if isinstance(scheduler, RFlowScheduler):
+                    timesteps = scheduler.sample_timesteps(images) 
                 noisy_e = scheduler.add_noise(original_samples=e, noise=noise, timesteps=timesteps)
                 noise_pred = model(x=noisy_e, timesteps=timesteps)
 
-                if scheduler.prediction_type == "v_prediction":
-                    # Use v-prediction parameterization
-                    target = scheduler.get_velocity(e, noise, timesteps)
-                elif scheduler.prediction_type == "epsilon":
-                    target = noise
+                if isinstance(scheduler, RFlowScheduler):
+                    target = images - noise
+                else:
+                    if scheduler.prediction_type == "v_prediction":
+                        target = scheduler.get_velocity(images, noise, timesteps)
+                    elif scheduler.prediction_type == "epsilon":
+                        target = noise
                 loss = F.l1_loss(noise_pred.float(), target.float()) 
 
         loss = loss.mean()
