@@ -431,11 +431,6 @@ def train_ldm(
         if lr_scheduler is not None:
             lr_scheduler.step()
 
-        '''if (epoch+1) % 50 == 0:
-            print(f"Starting idle epoch after epoch {epoch}...")
-            time.sleep(30)
-            print("Idle epoch complete.")'''
-
         if (epoch + 1) % eval_freq == 0:
             val_loss = eval_ldm(
                 model=model,
@@ -445,13 +440,11 @@ def train_ldm(
                 device=device,
                 step=len(train_loader) * epoch,
                 writer=writer_val,
-                #sample=True if (epoch + 1) % (eval_freq * 2) == 0 else False,
                 sample=False,
                 scale_factor=scale_factor,
             )
 
             print(f"epoch {epoch + 1} val loss: {val_loss:.4f}")
-            #print_gpu_memory_report()
 
             # Save checkpoint
             checkpoint = {
@@ -499,11 +492,8 @@ def train_epoch_ldm(
 ) -> int:
     model.train()
     iteration = start_iteration  # Start counting from the provided start iteration
-     # Ensure checkpoint directory exists
     # Check if latents are presaved 
     presaved_latents = True
-    scale_factor = 1.0
-
 
     pbar = tqdm(enumerate(loader), total=len(loader))
     for step, x in pbar:
@@ -534,7 +524,8 @@ def train_epoch_ldm(
                         target = noise
                 #del images, noise
                 #torch.cuda.empty_cache()
-                loss = F.l1_loss(noise_pred.float(), target.float())
+                loss = F.smooth_l1_loss(noise_pred.float(), target.float()) #Huber loss
+                #loss = F.l1_loss(noise_pred.float(), target.float())
         else:
             with autocast(enabled=True):
                 with torch.no_grad():
@@ -561,8 +552,8 @@ def train_epoch_ldm(
                         target = noise
                 #del e,noise
                 #torch.cuda.empty_cache()
-                loss = F.l1_loss(noise_pred.float(), target.float())
-
+                #loss = F.l1_loss(noise_pred.float(), target.float())
+                loss = F.smooth_l1_loss(noise_pred.float(), target.float()) #Huber loss
         losses = OrderedDict(loss=loss)
         scaler.scale(losses["loss"]).backward()
         scaler.step(optimizer)
@@ -574,18 +565,7 @@ def train_epoch_ldm(
 
         #pbar.set_postfix({"iteration": iteration, "loss": f"{losses['loss'].item():.5f}", "lr": f"{get_lr(optimizer):.6f}"})
         pbar.set_postfix({"epoch": epoch+1, "loss": f"{losses['loss'].item():.5f}", "lr": f"{get_lr(optimizer):.6f}"})
-        '''if (iteration + 1) % checkpoint_interval == 0:
-            checkpoint = {
-                "iteration": iteration + 1,
-                "epoch": epoch,
-                "diffusion": model.state_dict(),
-                "optimizer": optimizer.state_dict(),
-                "best_loss": best_loss,
-            }
-            checkpoint_filename = run_dir / f"checkpoint_iteration_{iteration + 1}.pth"
-            torch.save(checkpoint, checkpoint_filename)
-            print(f"Checkpoint saved at iteration {iteration + 1}")'''
-
+        
         iteration += 1  # Increment global iteration counter
         #stage1.to(device)
         #torch.cuda.empty_cache()
@@ -632,7 +612,8 @@ def eval_ldm(
                         target = noise
                 #del images,noise
                 #torch.cuda.empty_cache()
-                loss = F.l1_loss(noise_pred.float(), target.float()) 
+                loss = F.smooth_l1_loss(noise_pred.float(), target.float()) #Huber loss
+                #loss = F.l1_loss(noise_pred.float(), target.float()) 
         else:
             with autocast(enabled=True):
                 e = stage1(images) * scale_factor
@@ -652,8 +633,8 @@ def eval_ldm(
                         target = scheduler.get_velocity(images, noise, timesteps)
                     elif scheduler.prediction_type == "epsilon":
                         target = noise
-                loss = F.l1_loss(noise_pred.float(), target.float()) 
-
+                #loss = F.l1_loss(noise_pred.float(), target.float()) 
+                loss = F.smooth_l1_loss(noise_pred.float(), target.float()) #Huber loss
         loss = loss.mean()
         losses = OrderedDict(loss=loss)
 

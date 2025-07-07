@@ -3,21 +3,25 @@ import argparse
 import warnings
 from pathlib import Path
 
+import sys
+import os
+sys.path.append('/media/marvin/D/Marvin/MedLoRD/medlord_journal')
+
 import ast
 
 #import mlflow.pytorch
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from functions.networks.nets import DiffusionModelUNet, VQVAE
-from functions.networks.schedulers import DDPMScheduler
+from src.python.functions.networks.nets import DiffusionModelUNet, VQVAE
+from src.python.functions.networks.schedulers import DDPMScheduler, RFlowScheduler
 from monai.config import print_config
 from monai.utils import set_determinism
 from omegaconf import OmegaConf
 from tensorboardX import SummaryWriter
-from training_functions import train_ldm
+from src.python.training.training_functions import train_ldm
 from transformers import CLIPTextModel
-from util import get_dataloader
+from src.python.training.util import get_dataloader
 
 
 warnings.filterwarnings("ignore")
@@ -33,6 +37,7 @@ def parse_args():
     parser.add_argument("--training_ids", help="Location of file with training ids.")
     parser.add_argument("--validation_ids", help="Location of file with validation ids.")
     parser.add_argument("--config_file", help="Location of file with validation ids.")
+    parser.add_argument("--config_vqvae", help="Location of file with validation ids.")
     parser.add_argument("--vqvae_ckpt", help="Checkppoint of VQGAN.")
     parser.add_argument("--scale_factor", type=float, default=1.0, help="Path readable by load_model.")
     parser.add_argument("--batch_size", type=int, default=256, help="Training batch size.")
@@ -106,13 +111,13 @@ def main(args):
         training_ids=args.training_ids,
         validation_ids=args.validation_ids,
         num_workers=args.num_workers,
-        model_type="diffusion_scaled",
+        model_type="presaved",
     )
 
     # Load Autoencoder to produce the latent representations
     print(f"Loading Stage 1 from {args.vqvae_ckpt}")
     vqvae_checkpoint_path = Path(args.vqvae_ckpt)
-    config = OmegaConf.load("vqgan_1.yaml")
+    config = OmegaConf.load(args.config_vqvae)
     stage1 = VQVAE(**config["stage1"]["params"])
     vqvae_checkpoint = torch.load(vqvae_checkpoint_path,map_location="cpu")
     stage1.load_state_dict(vqvae_checkpoint["state_dict"])
@@ -128,6 +133,7 @@ def main(args):
     config = OmegaConf.load(args.config_file)
     diffusion = DiffusionModelUNet(**config["ldm"].get("params", dict()))
     scheduler = DDPMScheduler(**config["ldm"].get("scheduler", dict()))
+    #scheduler = RFlowScheduler(**config["ldm"].get("scheduler", dict()))
 
     #text_encoder = CLIPTextModel.from_pretrained("stabilityai/stable-diffusion-2-1-base", subfolder="text_encoder")
     

@@ -36,7 +36,7 @@ def get_datalist(
     for index, row in df.iterrows():
         data_dicts.append(
             {
-                "image": f"{row['image'].replace('sds-hd','sds')}",
+                "image": f"{row['image']}",
 
             }
         )
@@ -400,7 +400,7 @@ def get_dataloader(
 
     train_dicts = get_datalist(ids_path=training_ids)
     #Preloading data into Cache for more training speed. Adjust cache_rate to smaller value, if running out of RAM.
-    train_ds = CacheDataset(data=train_dicts,transform=train_transforms,cache_rate=0.1)
+    train_ds = CacheDataset(data=train_dicts,transform=train_transforms,cache_rate=0.0)
     train_loader = DataLoader(
         train_ds,
         batch_size=batch_size,
@@ -412,7 +412,7 @@ def get_dataloader(
     )
 
     val_dicts = get_datalist(ids_path=validation_ids)
-    val_ds = CacheDataset(data=val_dicts,transform=val_transforms,cache_rate=0.1)
+    val_ds = CacheDataset(data=val_dicts,transform=val_transforms,cache_rate=0.0)
     val_loader = DataLoader(
         val_ds,
         batch_size=batch_size,
