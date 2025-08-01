@@ -547,7 +547,7 @@ def train_epoch_ldm(
                     target = images - noise
                 else:
                     if scheduler.prediction_type == "v_prediction":
-                        target = scheduler.get_velocity(images, noise, timesteps)
+                        target = scheduler.get_velocity(e, noise, timesteps)
                     elif scheduler.prediction_type == "epsilon":
                         target = noise
                 #del e,noise
@@ -630,7 +630,7 @@ def eval_ldm(
                     target = images - noise
                 else:
                     if scheduler.prediction_type == "v_prediction":
-                        target = scheduler.get_velocity(images, noise, timesteps)
+                        target = scheduler.get_velocity(e, noise, timesteps)
                     elif scheduler.prediction_type == "epsilon":
                         target = noise
                 #loss = F.l1_loss(noise_pred.float(), target.float()) 
