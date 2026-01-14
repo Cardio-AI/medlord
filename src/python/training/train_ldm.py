@@ -14,7 +14,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from src.python.functions.networks.nets import DiffusionModelUNet, VQVAE
-from src.python.functions.networks.schedulers import DDPMScheduler, RFlowScheduler
+from src.python.functions.networks.schedulers import DDPMScheduler
 from monai.config import print_config
 from monai.utils import set_determinism
 from omegaconf import OmegaConf
@@ -133,23 +133,17 @@ def main(args):
     config = OmegaConf.load(args.config_file)
     diffusion = DiffusionModelUNet(**config["ldm"].get("params", dict()))
     scheduler = DDPMScheduler(**config["ldm"].get("scheduler", dict()))
-    #scheduler = RFlowScheduler(**config["ldm"].get("scheduler", dict()))
-
-    #text_encoder = CLIPTextModel.from_pretrained("stabilityai/stable-diffusion-2-1-base", subfolder="text_encoder")
     
     print(f"Let's use {torch.cuda.device_count()} GPUs!")
     device = torch.device("cuda")
     if torch.cuda.device_count() > 1:
         stage1 = torch.nn.DataParallel(stage1)
         diffusion = torch.nn.DataParallel(diffusion)
-        #text_encoder = torch.nn.DataParallel(text_encoder)
-
+    
     stage1 = stage1.to(device)
     diffusion = diffusion.to(device)
-    #text_encoder = text_encoder.to(device)
-
-    
-    optimizer = optim.AdamW(diffusion.parameters(), lr=config["ldm"]["base_lr"]) #changed from Adam
+   
+    optimizer = optim.AdamW(diffusion.parameters(), lr=config["ldm"]["base_lr"]) 
     lr_scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer,gamma=0.9999)
 
     # Get Checkpoint
@@ -167,13 +161,9 @@ def main(args):
         print(f"Using checkpoint!")
         with torch.no_grad():  # Ensure no gradients are computed during checkpoint loading
             checkpoint = torch.load(str(run_dir / "checkpoint.pth"))
-            '''if 'module.' in list(checkpoint["diffusion"].keys())[0]:
-                checkpoint["diffusion"] = {k.replace('module.', ''): v for k, v in checkpoint["diffusion"].items()}'''
             diffusion.load_state_dict(checkpoint["diffusion"])
 
             optimizer.load_state_dict(checkpoint["optimizer"])
-            for g in optimizer.param_groups:
-                g['lr'] = float(config["ldm"]["base_lr"])
             start_epoch = checkpoint["epoch"]
             best_loss = checkpoint["best_loss"]
         

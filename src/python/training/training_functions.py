@@ -191,17 +191,8 @@ def train_epoch_vqgan(
             else:
                 generator_loss = torch.tensor([0.0]).to(device)
 
-            # ADDED ENTROPY LOSS TO ENFORCE DIVERSE CODEBOOK - ON EMA CLUSTERS FOR SMOOTH LEARNING
-
-            cluster_size = model.quantizer.quantizer.ema_cluster_size 
-            cluster_prob = cluster_size / (cluster_size.sum() + 1e-8)
-
-            entropy = -torch.sum(cluster_prob * torch.log(cluster_prob + 1e-8))  # Avoid log(0)
-            entropy_loss = -entropy
-
-            entropy_weight = 0.001  # Start with low weight, increase as resolution of patches increases.
-
-            loss = l1_loss + quantization_loss + perceptual_weight * p_loss + adv_weight * generator_loss + j_loss+ entropy_weight * entropy_loss
+            
+            loss = l1_loss + quantization_loss + perceptual_weight * p_loss + adv_weight * generator_loss + j_loss
             
             loss = loss.mean()
             l1_loss = l1_loss.mean()
@@ -209,9 +200,6 @@ def train_epoch_vqgan(
             quantization_loss = quantization_loss.mean()
             g_loss = generator_loss.mean()
             j_loss = j_loss.mean()
-            entropy_loss = entropy_loss.mean()
-
-            #loss = l1_loss + quantization_loss + perceptual_weight * p_loss + adv_weight * generator_loss + j_loss
 
             losses = OrderedDict(
                 loss=loss,
@@ -220,13 +208,12 @@ def train_epoch_vqgan(
                 quantization_loss=quantization_loss,
                 g_loss=g_loss,
                 j_loss=j_loss,
-                entropy_loss=entropy_loss,
 
             )
 
         scaler_g.scale(losses["loss"]).backward()
         scaler_g.unscale_(optimizer_g)
-        torch.nn.utils.clip_grad_norm_(model.parameters(), 1.5) 
+        torch.nn.utils.clip_grad_norm_(model.parameters(), 1.0) # Modify clipping, if training becomes unstable
         scaler_g.step(optimizer_g)
         scaler_g.update()
 
@@ -247,7 +234,7 @@ def train_epoch_vqgan(
 
             scaler_d.scale(d_loss).backward()
             scaler_d.unscale_(optimizer_d)
-            torch.nn.utils.clip_grad_norm_(discriminator.parameters(), 1.5) 
+            torch.nn.utils.clip_grad_norm_(discriminator.parameters(), 1.0) # Modify clipping, if training becomes unstable
             scaler_d.step(optimizer_d)
             scaler_d.update()
         else:
@@ -317,16 +304,8 @@ def eval_vqgan(
             else:
                 discriminator_loss = torch.tensor([0.0]).to(device)
 
-            # ADDED ENTROPY LOSS TO ENFORCE DIVERSE CODEBOOK - ON EMA CLUSTERS FOR SMOOTH LEARNING
-            cluster_size = model.quantizer.quantizer.ema_cluster_size 
-            cluster_prob = cluster_size / (cluster_size.sum() + 1e-8)
-            entropy = -torch.sum(cluster_prob * torch.log(cluster_prob + 1e-8))  # Avoid log(0)
-            entropy_loss = -entropy
-
-            entropy_weight = 0.001
-
-            #loss = l1_loss + quantization_loss + perceptual_weight * p_loss + adv_weight * generator_loss + j_loss + perplexity_weight * perplexity_loss
-            loss = l1_loss + quantization_loss + perceptual_weight * p_loss + adv_weight * generator_loss + j_loss + entropy_weight * entropy_loss
+           
+            loss = l1_loss + quantization_loss + perceptual_weight * p_loss + adv_weight * generator_loss + j_loss 
             
             loss = loss.mean()
             l1_loss = l1_loss.mean()
@@ -335,9 +314,7 @@ def eval_vqgan(
             g_loss = generator_loss.mean()
             d_loss = discriminator_loss.mean()
             j_loss = j_loss.mean()
-            entropy_loss = entropy_loss.mean()
 
-            #loss = l1_loss + quantization_loss + perceptual_weight * p_loss + adv_weight * generator_loss + j_loss
             losses = OrderedDict(
                 loss=loss,
                 l1_loss=l1_loss,
@@ -346,7 +323,6 @@ def eval_vqgan(
                 g_loss=g_loss,
                 d_loss=d_loss,
                 j_loss=j_loss,
-                entropy_loss=entropy_loss
             )
 
         for k, v in losses.items():
@@ -393,9 +369,6 @@ def train_ldm(
     scaler = GradScaler()
     raw_model = model.module if hasattr(model, "module") else model
 
-    #log_dir = log_dir 
-    #tracker = CarbonTracker(epochs=50,epochs_before_pred=10,monitor_epochs=-1,log_dir=log_dir,interpretable=True,verbose=2)
-
     val_loss = eval_ldm(
         model=model,
         stage1=stage1,
@@ -410,7 +383,7 @@ def train_ldm(
     print(f"epoch {start_epoch} val loss: {val_loss:.4f}")
     iteration = len(train_loader) * start_epoch
     for epoch in range(start_epoch, n_epochs):
-        #tracker.epoch_start()
+
         iteration = train_epoch_ldm(
             model=model,
             stage1=stage1,
@@ -424,7 +397,7 @@ def train_ldm(
             scale_factor=scale_factor,
             start_iteration=iteration,
             checkpoint_interval=eval_freq,
-            run_dir=run_dir,  # Save checkpoints directly from train_epoch_ldm
+            run_dir=run_dir,  
             best_loss=best_loss,
         )
         
@@ -463,13 +436,10 @@ def train_ldm(
                 best_loss = val_loss
                 torch.save(raw_model.state_dict(), str(run_dir / "best_model.pth"))
 
-        #tracker.epoch_end()
     print(f"Training finished!")
     print(f"Saving final model...")
     torch.save(raw_model.state_dict(), str(run_dir / "final_model.pth"))
-    #torch.save(checkpoint, str(run_dir / ("checkpoint.pth")))
 
-    #tracker.stop()
     
     return val_loss
 
@@ -486,13 +456,11 @@ def train_epoch_ldm(
     scaler: GradScaler,
     scale_factor: float = 1.0,
     start_iteration: int = 0,
-    checkpoint_interval: int = 10000,  # Save checkpoint every checkpoint_interval steps
-    run_dir: Path = Path("checkpoints"),
-    best_loss: float = float('inf')
+
 ) -> int:
     model.train()
     iteration = start_iteration  # Start counting from the provided start iteration
-    # Check if latents are presaved 
+    
     presaved_latents = True
 
     pbar = tqdm(enumerate(loader), total=len(loader))
@@ -524,8 +492,7 @@ def train_epoch_ldm(
                         target = noise
                 #del images, noise
                 #torch.cuda.empty_cache()
-                loss = F.smooth_l1_loss(noise_pred.float(), target.float()) #Huber loss
-                #loss = F.l1_loss(noise_pred.float(), target.float())
+                loss = F.smooth_l1_loss(noise_pred.float(), target.float()) 
         else:
             with autocast(enabled=True):
                 with torch.no_grad():
@@ -552,7 +519,7 @@ def train_epoch_ldm(
                         target = noise
                 #del e,noise
                 #torch.cuda.empty_cache()
-                #loss = F.l1_loss(noise_pred.float(), target.float())
+
                 loss = F.smooth_l1_loss(noise_pred.float(), target.float()) #Huber loss
         losses = OrderedDict(loss=loss)
         scaler.scale(losses["loss"]).backward()
@@ -563,7 +530,6 @@ def train_epoch_ldm(
         for k, v in losses.items():
             writer.add_scalar(f"{k}", v.item(), iteration)
 
-        #pbar.set_postfix({"iteration": iteration, "loss": f"{losses['loss'].item():.5f}", "lr": f"{get_lr(optimizer):.6f}"})
         pbar.set_postfix({"epoch": epoch+1, "loss": f"{losses['loss'].item():.5f}", "lr": f"{get_lr(optimizer):.6f}"})
         
         iteration += 1  # Increment global iteration counter
@@ -613,7 +579,7 @@ def eval_ldm(
                 #del images,noise
                 #torch.cuda.empty_cache()
                 loss = F.smooth_l1_loss(noise_pred.float(), target.float()) #Huber loss
-                #loss = F.l1_loss(noise_pred.float(), target.float()) 
+
         else:
             with autocast(enabled=True):
                 e = stage1(images) * scale_factor
@@ -633,7 +599,7 @@ def eval_ldm(
                         target = scheduler.get_velocity(e, noise, timesteps)
                     elif scheduler.prediction_type == "epsilon":
                         target = noise
-                #loss = F.l1_loss(noise_pred.float(), target.float()) 
+
                 loss = F.smooth_l1_loss(noise_pred.float(), target.float()) #Huber loss
         loss = loss.mean()
         losses = OrderedDict(loss=loss)

@@ -219,30 +219,8 @@ def get_dataloader(
 ):
     # Define transformations
 
-    if model_type == "autoencoder":
-        train_transforms = Compose(
-            [
-                LoadImaged(keys=["image"]),
-                EnsureChannelFirstd(keys=["image"]),
-                ThresholdIntensityd(keys=["image"], threshold=2000, above=False, cval=2000),
-                ThresholdIntensityd(keys=["image"], threshold=-1000, above=True, cval=-1000),
-                ScaleIntensityd(keys=["image"],minv=-1.0,maxv=1.0),
-                RandRotated(keys=["image"],range_x=0.0872665,range_y=0.0872665,range_z=0.0872665,prob=0.2),
-                RandFlipd(keys=["image"],spatial_axis=1,prob=0.5),
-                RandSpatialCropd(keys=["image"],roi_size=image_roi,random_size=False)
-            ]
-        )
-        val_transforms = Compose(
-        [
-            LoadImaged(keys=["image"]),
-            EnsureChannelFirstd(keys=["image"]),
-            ThresholdIntensityd(keys=["image"], threshold=2000, above=False, cval=2000),
-            ThresholdIntensityd(keys=["image"], threshold=-1000, above=True, cval=-1000),
-            ScaleIntensityd(keys=["image"],minv=-1.0,maxv=1.0),
-            RandSpatialCropd(keys=["image"],roi_size=image_roi,random_size=False),
-            ]
-        )
-    elif model_type == "autoencoder_luna":
+   
+    if model_type == "autoencoder_luna":
         train_transforms = Compose(
             [
                 LoadImaged(keys=["image"]),
@@ -267,55 +245,7 @@ def get_dataloader(
             CenterCropToMultipleOf32(keys=["image"]),
             ]
         )
-    elif model_type == "autoencoder_mamamia":
-        train_transforms = Compose(
-            [
-                LoadImaged(keys=["image"]),
-                EnsureChannelFirstd(keys=["image"]),
-                ScaleIntensityd(keys=["image"],minv=-1.0,maxv=1.0),
-                RandRotated(keys=["image"],range_x=0.0872665,range_y=0.0872665,range_z=0.0872665,prob=0.2),
-                RandFlipd(keys=["image"],spatial_axis=1,prob=0.5),
-                RandSpatialCropd(keys=["image"],roi_size=(256,256,96),random_size=False),
-                CenterCropToMultipleOf32(keys=["image"]),
-            ]
-        )
-        val_transforms = Compose(
-        [
-            LoadImaged(keys=["image"]),
-            EnsureChannelFirstd(keys=["image"]),
-            ScaleIntensityd(keys=["image"],minv=-1.0,maxv=1.0),
-            RandSpatialCropd(keys=["image"],roi_size=(352,352,96),random_size=False),
-            CenterCropToMultipleOf32(keys=["image"]),
-            ]
-        )
-    elif model_type == "autoencoder_4D":
-        train_transforms = Compose(
-        [
-            LoadImaged(keys=["image"]),
-            EnsureChannelFirstd(keys=["image"]),
-            SpatialPadd(keys=["image"],spatial_size=(8,8,8),mode="reflect"),
-            PermuteDimensionsd(keys=["image"]),
-            ScaleIntensityd(keys=["image"],minv=-1.0,maxv=1.0),
-            CyclicPadTimed(keys=["image"], target_slices=32),
-            RandRotated(keys=["image"],range_x=0.0872665,range_y=0.0872665,range_z=0.0872665,prob=0.2),
-            RandFlipd(keys=["image"],spatial_axis=1,prob=0.5),
-            RandSpatialCropd(keys=["image"],roi_size=(256,256,32)), #256,256,32
-            PadToMultipleOf128(keys=["image"])
-            ]
-        )
-        val_transforms = Compose(
-        [
-            LoadImaged(keys=["image"]),
-            EnsureChannelFirstd(keys=["image"]),
-            SpatialPadd(keys=["image"],spatial_size=(8,8,8),mode="reflect"),
-            PermuteDimensionsd(keys=["image"]),
-            ScaleIntensityd(keys=["image"],minv=-1.0,maxv=1.0),
-            CyclicPadTimed(keys=["image"], target_slices=32),
-            RandSpatialCropd(keys=["image"],roi_size=(256,256,32)), # 256,256,32
-            PadToMultipleOf128(keys=["image"])
-            ]
-        )
-
+   
     # Use this if you encode images on the run, with no augmentation
     if model_type == "diffusion":
         train_transforms = Compose(
@@ -341,27 +271,7 @@ def get_dataloader(
             CenterSpatialCropd(keys=["image"],roi_size=image_roi), 
             ]
         )
-    #Use this in a non restricted setting, with donwsample/upsample transform
-    if model_type == "non_restricted":
-        max_depth = 512 # define maximum depth
-        val_transforms = Compose([
-            LoadImaged(keys=["image"]),
-            EnsureChannelFirstd(keys=["image"]),
-            ThresholdIntensityd(keys=["image"], threshold=2000, above=False, cval=2000),
-            ThresholdIntensityd(keys=["image"], threshold=-1000, above=True, cval=-1000),
-            ScaleIntensityd(keys=["image"], minv=-1.0, maxv=1.0),
-            ResizeDepthToMultipleOf128(keys=["image"], max_depth=max_depth), 
-            ToTensord(keys=["image"]),
-        ])
-        train_transforms = Compose([
-            LoadImaged(keys=["image"]),
-            EnsureChannelFirstd(keys=["image"]),
-            ThresholdIntensityd(keys=["image"], threshold=2000, above=False, cval=2000),
-            ThresholdIntensityd(keys=["image"], threshold=-1000, above=True, cval=-1000),
-            ScaleIntensityd(keys=["image"], minv=-1.0, maxv=1.0),
-            ResizeDepthToMultipleOf128(keys=["image"], max_depth=max_depth), 
-            ToTensord(keys=["image"]),
-        ])
+    
     if model_type == "transformer":
         val_transforms = Compose(
         [   LoadImaged(keys=["image"]),

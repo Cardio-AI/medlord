@@ -5,15 +5,15 @@ from pathlib import Path
 
 import sys
 import os
-sys.path.append('/media/marvin/D/Marvin/MedLoRD/medlord_journal')
+
 
 import torch
 import torch.optim as optim
 
 from generative.losses.perceptual import PerceptualLoss
 
-from src.python.functions.networks.nets import VQVAE #change to generative_new?
-from generative.networks.nets.patchgan_discriminator import PatchDiscriminator #change to generative_new?
+from src.python.functions.networks.nets import VQVAE 
+from generative.networks.nets.patchgan_discriminator import PatchDiscriminator 
 
 from monai.config import print_config
 from monai.utils import set_determinism
@@ -130,19 +130,9 @@ def main(args):
             discriminator_state_dict = remove_module_prefix(discriminator_state_dict)
         discriminator.load_state_dict(discriminator_state_dict)
         optimizer_g.load_state_dict(checkpoint["optimizer_g"])
-        for g in optimizer_g.param_groups:
-            g['lr'] = float(config["stage1"]["base_lr"])
         optimizer_d.load_state_dict(checkpoint["optimizer_d"])
-        for d in optimizer_d.param_groups:
-            d['lr'] = float(config["stage1"]["disc_lr"])
         start_epoch = checkpoint["epoch"]
         best_loss = checkpoint["best_loss"]
-        if "ema_cluster_size" in checkpoint and "ema_w" in checkpoint:
-            model.quantizer.quantizer.ema_cluster_size = checkpoint["ema_cluster_size"]
-            model.quantizer.quantizer.ema_w = checkpoint["ema_w"]
-            print("EMA parameters successfully restored!")
-        else:
-            print("Warning: EMA parameters not found in checkpoint. This may affect codebook usage.")
     else:
         print(f"No checkpoint found.")
 
