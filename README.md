@@ -51,13 +51,38 @@ Before training, make sure you have your dataset prepared. The training code exp
 ### 3. Train Autoencoder
 First a VQ-VAE witg GAN loss is trained to encode images into latent space. For that run:
 
-`python ./src/python/training/train_vqgan.py --training_ids=./ids/train_ids.csv --validation_ids=./ids/val_ids.csv --run_dir=VQGAN_v1 --batch_size=1 --eval_freq=10 --n_epochs=500 --adv_start=50 --num_workers=2 --config_file=./configs/stage1/vqgan_ds4.yaml`
+```
+python ./src/python/training/train_vqgan.py \
+  --training_ids=./ids/train_ids.csv \
+  --validation_ids=./ids/val_ids.csv \
+  --output_dir=results \
+  --run_dir=vqgan \
+  --batch_size=1 \
+  --eval_freq=10 \
+  --n_epochs=500 \
+  --adv_start=50 \
+  --num_workers=2 \
+  --config_file=./configs/stage1/vqgan_ds4.yaml
+```
 
 ### 4. Train Diffusion Model in Latent Space
 To train a diffusion model in the learned latent space run:
 
-`python ./src/python/training/train_ldm.py --training_ids=./ids/train_ids.csv --validation_ids=./ids/val_ids.csv --run_dir=LDM_v1 --batch_size=1 --eval_freq=10 --n_epochs=500 --adv_start=50 --num_workers=2 --config_file=./configs/stage1/vqgan_ds4.yaml --vqvae_ckpt=./vqgan_1.pth --scale_factor=1.0`
-
+```
+python ./src/python/training/train_ldm.py \
+  --training_ids=./ids/train_ids.csv \
+  --validation_ids=./ids/val_ids.csv \
+  --output_dir=results \
+  --run_dir=LDM_v1 \
+  --batch_size=1 \
+  --eval_freq=10 \
+  --n_epochs=500 \
+  --adv_start=50 \
+  --num_workers=2 \
+  --config_file=./configs/diffusion/medlord.yaml \
+  --vqvae_ckpt=./vqgan_1.pth \
+  --scale_factor=1.0
+```
 
 ## License
 
