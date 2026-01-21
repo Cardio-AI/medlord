@@ -132,13 +132,13 @@ def train_vqgan(
             # Save checkpoint
             checkpoint = {
                 "epoch": epoch + 1,
-                "state_dict": model.state_dict(),
+                "state_dict": raw_model.state_dict(),
                 "discriminator": discriminator.state_dict(),
                 "optimizer_g": optimizer_g.state_dict(),
                 "optimizer_d": optimizer_d.state_dict(),
                 "best_loss": best_loss,
-                "ema_cluster_size": model.quantizer.quantizer.ema_cluster_size,  # Add this
-                "ema_w": model.quantizer.quantizer.ema_w,
+                "ema_cluster_size": raw_model.quantizer.quantizer.ema_cluster_size,  # Add this
+                "ema_w": raw_model.quantizer.quantizer.ema_w,
             }
             torch.save(checkpoint, str(run_dir / f"checkpoint_epoch_{epoch + 1}.pth"))
 
