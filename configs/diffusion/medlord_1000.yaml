@@ -1,12 +1,12 @@
 training:
   n_epochs: 5000
-  batch_size: 4
+  batch_size: 8
   num_workers: 4
-  eval_freq: 100
-  scale_factor: 1.11
+  eval_freq: 50
+  scale_factor: 1.141876
   use_ema: true
   ema_decay: 0.999
-  use_precomputed_latents: true  # set to false if you want to train on raw images
+  use_precomputed_latents: true
   roi_size: [64, 64, 64] #only used if latents are not precomputed
 
 optim:
@@ -27,5 +27,5 @@ model:
 
 scheduler:
   schedule: "cosine"
-  num_train_timesteps: 300
+  num_train_timesteps: 1000
   prediction_type: "v_prediction"

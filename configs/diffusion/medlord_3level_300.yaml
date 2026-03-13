@@ -1,6 +1,6 @@
 training:
-  n_epochs: 5000
-  batch_size: 4
+  n_epochs: 4000
+  batch_size: 2
   num_workers: 4
   eval_freq: 100
   scale_factor: 1.11
@@ -10,7 +10,7 @@ training:
   roi_size: [64, 64, 64] #only used if latents are not precomputed
 
 optim:
-  lr: 1e-4
+  lr: 5e-5
   lr_gamma: 0.9995
 
 model:
@@ -18,11 +18,11 @@ model:
     spatial_dims: 3
     in_channels: 8
     out_channels: 8
-    num_res_blocks: 2
-    num_channels: [64, 128, 256, 512]
-    attention_levels: [false, false, true, true]
+    num_res_blocks: 3
+    num_channels: [128, 256, 512]
+    attention_levels: [false, false, true]
     with_conditioning: false
-    num_head_channels: [0, 0, 32, 32]
+    num_head_channels: [0, 0, 64]
     use_flash_attention: true
 
 scheduler:

@@ -1,9 +1,0 @@
-transformer:
-  base_lr: 0.000020
-  params:
-    num_tokens: 16385
-    max_seq_len: 12544
-    attn_layers_dim: 256
-    attn_layers_depth: 22
-    attn_layers_heads: 8
-    use_flash_attention: True
