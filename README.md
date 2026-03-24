@@ -35,8 +35,8 @@ Pretrained checkpoints trained on the LUNA dataset are available on Hugging Face
 
 | Model | Download |
 |---|---|
-| VQ-GAN | `hf download AICM-HD/medlord vqgan_luna.pth --local-dir checkpoints/` |
-| LDM (unconditional) | `hf download AICM-HD/medlord ldm_luna.pth --local-dir checkpoints/` |
+| VQ-GAN | `hf download AICM-HD/medlord vqgan_luna_ds8.pth --local-dir checkpoints/` |
+| LDM (unconditional) | `hf download AICM-HD/medlord ldm_luna_ds8.pth --local-dir checkpoints/` |
 | ControlNet | `hf download AICM-HD/medlord controlnet_luna.pth --local-dir checkpoints/` |
 
 Or download all checkpoints at once:
